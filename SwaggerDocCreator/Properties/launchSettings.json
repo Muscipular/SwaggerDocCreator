@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "SwaggerDocCreator": {
+      "commandName": "Project",
+      "commandLineArgs": "-i v1.json",
+      "workingDirectory": "D:\\Projects\\SwaggerDocCreator\\SwaggerDocCreator\\bin\\Debug\\netcoreapp2.0"
+    }
+  }
+}
