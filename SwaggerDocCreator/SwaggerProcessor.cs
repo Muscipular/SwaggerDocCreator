@@ -130,16 +130,21 @@ namespace SwaggerDocCreator
                 var desc = property.Description ?? "";
                 property = property.ActualTypeSchema;
                 table.AddCell(field);
+                string typeName = property.Type.ToString();
+                if (property.ExtensionData.TryGetValue("typeInfo", out var typeNameO))
+                {
+                    typeName = typeNameO?.ToString() ?? property.Type.ToString();
+                }
                 switch (property.Type)
                 {
                     case JsonObjectType.Array:
-                        var tname = Regex.Replace(property.ExtensionData["typeInfo"].ToString(), @"^List\[(.+)\]$", "$1");
+                        var tname = Regex.Replace(typeName, @"^List\[(.+)\]$", "$1");
                         table.AddCell(tname + "[]");
                         childs.Add(tname, property.Item.ActualTypeSchema);
                         break;
                     case JsonObjectType.Object:
-                        table.AddCell(property.ExtensionData["typeInfo"].ToString());
-                        childs.Add(property.ExtensionData["typeInfo"].ToString(), property.ActualTypeSchema);
+                        table.AddCell(typeName);
+                        childs.Add(typeName, property.ActualTypeSchema);
                         break;
                     case JsonObjectType.None:
                         throw new InvalidOperationException();
