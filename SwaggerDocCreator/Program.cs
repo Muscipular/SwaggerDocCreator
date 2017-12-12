@@ -12,7 +12,7 @@ namespace SwaggerDocCreator
             return Parser.Default.ParseArguments<Options>(args)
                 .MapResult(x =>
                     {
-                        new SwaggerProcessor().Process(x.Input);
+                        new SwaggerProcessor().Process(x.Input,x.FontPath,x.FontFamily,x.Output);
                         return 0;
                     },
                     x => -1);

@@ -2,7 +2,7 @@
   "profiles": {
     "SwaggerDocCreator": {
       "commandName": "Project",
-      "commandLineArgs": "-i v1.json",
+      "commandLineArgs": "-i http://10.2.29.188:8002/api/swagger/v1 -f 新宋体 -F %windir%/fonts/simsun.ttc -o D:/v1.pdf",
       "workingDirectory": "bin\\Debug\\"
     }
   }
