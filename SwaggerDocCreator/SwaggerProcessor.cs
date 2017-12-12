@@ -35,7 +35,7 @@ namespace SwaggerDocCreator
             using (var pdfDocument = new iText.Kernel.Pdf.PdfDocument(new PdfWriter(File.Open(output, FileMode.Create))))
             {
                 var document = new Document(pdfDocument);
-                PdfFontFactory.Register(fontPath);//"simsun.ttc"
+                PdfFontFactory.Register(fontPath); //"simsun.ttc"
                 //var array = PdfFontFactory.GetRegisteredFonts().Where(x => x.Contains("sum")).ToArray();
                 var msyh = PdfFontFactory.CreateRegisteredFont(fontFamily, PdfEncodings.IDENTITY_H); //新宋体
                 document.SetFont(msyh);
@@ -148,7 +148,7 @@ namespace SwaggerDocCreator
             string typeName = field;
             if (property.ExtensionData.TryGetValue("typeInfo", out var typeNameO))
             {
-                typeName = typeNameO?.ToString() ?? field;
+                typeName = typeNameO?.ToString() ?? (field + "Object");
             }
             switch (property.Type)
             {
