@@ -43,7 +43,7 @@ namespace SwaggerDocCreator
                 //                document.SetFont(PdfFontFactory.CreateRegisteredFont("helvetica"));
                 document.Add(new Paragraph(new Text(swaggerDocument.Info.Title).SetBold().SetFontSize(36).SetTextAlignment(TextAlignment.CENTER)));
                 document.Add(new Paragraph(new Text("Version: " + swaggerDocument.Info.Version).SetBold()));
-                document.Add(new Paragraph(new Text(swaggerDocument.Info.Description)));
+                document.Add(new Paragraph(new Text(swaggerDocument.Info.Description ?? "")));
 
                 int indexTag = 0, indexOper = 0;
                 foreach (var (tag, pairs) in swaggerDocument.Paths.GroupBy(x => x.Value.Values.FirstOrDefault().Tags.FirstOrDefault()))
@@ -95,28 +95,46 @@ namespace SwaggerDocCreator
 
         private void RenderParmeter(Document document, IEnumerable<SwaggerParameter> parameters)
         {
-            document.Add(new Paragraph("参数:").NoMarginPadding().SetMarginTop(10));
-            var table = new Table(columnWidths, true).SetFontSize(12);
-            document.Add(table);
-            table.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
             var childs = new Dictionary<string, JsonSchema4>();
-            foreach (var parameter in parameters)
-            {
-                if (parameter.Kind == SwaggerParameterKind.Body)
-                {
-                    var schema = parameter.ActualSchema;
 
-                    foreach (var (field, property) in schema.ActualProperties)
+            foreach (var ps in parameters.GroupBy(x => x.Kind).OrderBy(x => x.Key != SwaggerParameterKind.Header))
+            {
+                switch (ps.Key)
+                {
+                    case SwaggerParameterKind.Undefined:
+                        continue;
+                    case SwaggerParameterKind.Body:
+                    case SwaggerParameterKind.Query:
+                    case SwaggerParameterKind.Path:
+                    case SwaggerParameterKind.FormData:
+                    case SwaggerParameterKind.ModelBinding:
+                        document.Add(new Paragraph($"{ps.Key:G}参数:").NoMarginPadding().SetMarginTop(10));
+                        break;
+                    case SwaggerParameterKind.Header:
+                        document.Add(new Paragraph("Header:").NoMarginPadding().SetMarginTop(10));
+                        break;
+                }
+                var table = new Table(columnWidths, true).SetFontSize(12);
+                document.Add(table);
+                table.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
+                foreach (var parameter in ps)
+                {
+                    if (parameter.Kind == SwaggerParameterKind.Body)
                     {
-                        FillTable(field, property, table, childs);
+                        var schema = parameter.ActualSchema;
+
+                        foreach (var (field, property) in schema.ActualProperties)
+                        {
+                            FillTable(field, property, table, childs);
+                        }
+                    }
+                    else
+                    {
+                        FillTable(parameter.Name, parameter, table, childs);
                     }
                 }
-                else
-                {
-                    FillTable(parameter.Name, parameter, table, childs);
-                }
+                table.Complete();
             }
-            table.Complete();
             RenderChildren(document, childs);
         }
 
@@ -141,34 +159,49 @@ namespace SwaggerDocCreator
 
         private void FillTable(string field, JsonSchema4 property, Table table, Dictionary<string, JsonSchema4> childs)
         {
-            var isRequired = !((dynamic)property).IsRequired;
+            var isAllowNull = !((dynamic)property).IsRequired;
             var desc = property.Description ?? "";
             property = property.ActualTypeSchema;
             table.AddCell(field);
             string typeName = field;
-            if (property.ExtensionData.TryGetValue("typeInfo", out var typeNameO))
+            if (property.ExtensionData != null)
             {
-                typeName = typeNameO?.ToString() ?? (field + "Object");
+                if (property.ExtensionData.TryGetValue("typeInfo", out var typeNameO))
+                {
+                    typeName = typeNameO?.ToString() ?? (field + "Object");
+                }
             }
             switch (property.Type)
             {
                 case JsonObjectType.Array:
-                    var tname = Regex.Replace(typeName, @"^List\[(.+)\]$", "$1");
-                    table.AddCell(tname + "[]");
-                    childs.Add(tname, property.Item.ActualTypeSchema);
+                    typeName = Regex.Replace(typeName, @"^List\[(.+)\]$", "$1[]");
+                    childs.Add(typeName.Replace("[]", ""), property.Item.ActualTypeSchema);
                     break;
                 case JsonObjectType.Object:
-                    table.AddCell(typeName);
+                    //table.AddCell(typeName);
                     childs.Add(typeName, property.ActualTypeSchema);
                     break;
                 case JsonObjectType.None:
-                    throw new InvalidOperationException();
                     break;
                 default:
-                    table.AddCell(property.Type.ToString());
+                    typeName = property.Type.ToString();
+                    if (property.Type == JsonObjectType.String)
+                    {
+                        switch (property.Format)
+                        {
+                            case "date-time":
+                                typeName = "DateTime";
+                                break;
+                            case "date":
+                                typeName = "Date";
+                                break;
+                        }
+                    }
+                    //table.AddCell(property.Type.ToString());
                     break;
             }
-            table.AddCell(isRequired ? "是" : "否");
+            table.AddCell(typeName);
+            table.AddCell(isAllowNull ? "是" : "否");
             table.AddCell(desc);
             table.Flush();
         }
