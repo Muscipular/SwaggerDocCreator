@@ -20,7 +20,7 @@ namespace SwaggerDocCreator
     {
         float[] columnWidths = new[] {22f, 20, 12, 46};
 
-        public void Process(string input, string fontPath, string fontFamily, string output)
+        public void Process(string input, string fontPath, string fontFamily, string output, string[] argTags)
         {
             OpenApiDocument swaggerDocument;
             if (input.StartsWith("http"))
@@ -52,7 +52,7 @@ namespace SwaggerDocCreator
                 foreach (var (tag, pairs) in swaggerDocument.Paths.GroupBy(x =>
                              x.Value.Values.FirstOrDefault().Tags.FirstOrDefault()))
                 {
-                    if (tag != "CustomsExtSys")
+                    if (argTags.Length > 0 && argTags.All(e => e != tag))
                     {
                         continue;
                     }
@@ -95,6 +95,10 @@ namespace SwaggerDocCreator
 
         private void RenderResponse(Document document, OpenApiResponse response)
         {
+            if (response.Schema == null)
+            {
+                return;
+            }
             var childs = new Dictionary<string, JsonSchema>();
             document.Add(new Paragraph("返回值").NoMarginPadding().SetMarginTop(10));
             var table = new Table(columnWidths, true).SetFontSize(12);
