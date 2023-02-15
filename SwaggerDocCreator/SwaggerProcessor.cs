@@ -18,21 +18,23 @@ namespace SwaggerDocCreator
 {
     class SwaggerProcessor
     {
-        float[] columnWidths = new[] { 22f, 20, 12, 46 };
+        float[] columnWidths = new[] {22f, 20, 12, 46};
 
         public void Process(string input, string fontPath, string fontFamily, string output)
         {
-            SwaggerDocument swaggerDocument;
+            OpenApiDocument swaggerDocument;
             if (input.StartsWith("http"))
             {
-                swaggerDocument = SwaggerDocument.FromUrlAsync(input).Result;
+                swaggerDocument = OpenApiDocument.FromUrlAsync(input).Result;
             }
             else
             {
-                swaggerDocument = NSwag.SwaggerDocument.FromFileAsync(input).Result;
+                swaggerDocument = NSwag.OpenApiDocument.FromFileAsync(input).Result;
             }
+
             //var filename = Path.Combine(Path.GetPathRoot(input), Path.GetFileNameWithoutExtension(input) + ".pdf");
-            using (var pdfDocument = new iText.Kernel.Pdf.PdfDocument(new PdfWriter(File.Open(output, FileMode.Create))))
+            using (var pdfDocument =
+                   new iText.Kernel.Pdf.PdfDocument(new PdfWriter(File.Open(output, FileMode.Create))))
             {
                 var document = new Document(pdfDocument);
                 PdfFontFactory.Register(fontPath); //"simsun.ttc"
@@ -41,36 +43,49 @@ namespace SwaggerDocCreator
                 document.SetFont(msyh);
                 document.SetFontSize(14);
                 //                document.SetFont(PdfFontFactory.CreateRegisteredFont("helvetica"));
-                document.Add(new Paragraph(new Text(swaggerDocument.Info.Title).SetBold().SetFontSize(36).SetTextAlignment(TextAlignment.CENTER)));
+                document.Add(new Paragraph(new Text(swaggerDocument.Info.Title).SetBold().SetFontSize(36)
+                    .SetTextAlignment(TextAlignment.CENTER)));
                 document.Add(new Paragraph(new Text("Version: " + swaggerDocument.Info.Version).SetBold()));
                 document.Add(new Paragraph(new Text(swaggerDocument.Info.Description ?? "")));
 
                 int indexTag = 0, indexOper = 0;
-                foreach (var (tag, pairs) in swaggerDocument.Paths.GroupBy(x => x.Value.Values.FirstOrDefault().Tags.FirstOrDefault()))
+                foreach (var (tag, pairs) in swaggerDocument.Paths.GroupBy(x =>
+                             x.Value.Values.FirstOrDefault().Tags.FirstOrDefault()))
                 {
+                    if (tag != "CustomsExtSys")
+                    {
+                        continue;
+                    }
+
                     indexTag++;
                     indexOper = 0;
                     document.Add(new Div().SetHeight(16));
-                    document.Add(new Paragraph($"{indexTag}. {tag}").NoMarginPadding().SetMarginTop(10).SetFontSize(18).SetBold());
+                    document.Add(new Paragraph($"{indexTag}. {tag}").NoMarginPadding().SetMarginTop(10).SetFontSize(18)
+                        .SetBold());
                     foreach (var (path, operations) in pairs)
                     {
                         foreach (var (method, operation) in operations)
                         {
                             indexOper++;
-                            document.Add(new Paragraph(new Text($"{indexTag}.{indexOper}. {operation.Summary}")).NoMarginPadding().SetBold());
-                            document.Add(new Paragraph(new Text("Method: " + method)).NoMarginPadding().SetFontSize(12));
+                            document.Add(new Paragraph(new Text($"{indexTag}.{indexOper}. {operation.Summary}"))
+                                .NoMarginPadding().SetBold());
+                            document.Add(new Paragraph(new Text("Method: " + method)).NoMarginPadding()
+                                .SetFontSize(12));
                             document.Add(new Paragraph(new Text("Url: " + path)).NoMarginPadding().SetFontSize(12));
 
-                            var parameters = operation.ActualParameters ?? Array.Empty<SwaggerParameter>();
+                            var parameters = operation.ActualParameters ?? Array.Empty<OpenApiParameter>();
                             if (parameters.Any())
                             {
                                 RenderParmeter(document, parameters);
                             }
-                            var responses = operation.ActualResponses.Where(x => x.Key == "200").Select(x => x.Value).FirstOrDefault();
+
+                            var responses = operation.ActualResponses.Where(x => x.Key == "200").Select(x => x.Value)
+                                .FirstOrDefault();
                             if (responses != null)
                             {
                                 RenderResponse(document, responses);
                             }
+
                             document.Add(new AreaBreak());
                         }
                     }
@@ -78,48 +93,50 @@ namespace SwaggerDocCreator
             }
         }
 
-        private void RenderResponse(Document document, SwaggerResponse response)
+        private void RenderResponse(Document document, OpenApiResponse response)
         {
-            var childs = new Dictionary<string, JsonSchema4>();
+            var childs = new Dictionary<string, JsonSchema>();
             document.Add(new Paragraph("返回值").NoMarginPadding().SetMarginTop(10));
             var table = new Table(columnWidths, true).SetFontSize(12);
             document.Add(table);
             table.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
-            foreach (var (field, prop) in response.ActualResponseSchema.ActualProperties)
+            foreach (var (field, prop) in response.ActualResponse.Schema.ActualProperties)
             {
                 FillTable(field, prop, table, childs);
             }
+
             table.Complete();
             RenderChildren(document, childs);
         }
 
-        private void RenderParmeter(Document document, IEnumerable<SwaggerParameter> parameters)
+        private void RenderParmeter(Document document, IEnumerable<OpenApiParameter> parameters)
         {
-            var childs = new Dictionary<string, JsonSchema4>();
+            var childs = new Dictionary<string, JsonSchema>();
 
-            foreach (var ps in parameters.GroupBy(x => x.Kind).OrderBy(x => x.Key != SwaggerParameterKind.Header))
+            foreach (var ps in parameters.GroupBy(x => x.Kind).OrderBy(x => x.Key != OpenApiParameterKind.Header))
             {
                 switch (ps.Key)
                 {
-                    case SwaggerParameterKind.Undefined:
+                    case OpenApiParameterKind.Undefined:
                         continue;
-                    case SwaggerParameterKind.Body:
-                    case SwaggerParameterKind.Query:
-                    case SwaggerParameterKind.Path:
-                    case SwaggerParameterKind.FormData:
-                    case SwaggerParameterKind.ModelBinding:
+                    case OpenApiParameterKind.Body:
+                    case OpenApiParameterKind.Query:
+                    case OpenApiParameterKind.Path:
+                    case OpenApiParameterKind.FormData:
+                    case OpenApiParameterKind.ModelBinding:
                         document.Add(new Paragraph($"{ps.Key:G}参数:").NoMarginPadding().SetMarginTop(10));
                         break;
-                    case SwaggerParameterKind.Header:
+                    case OpenApiParameterKind.Header:
                         document.Add(new Paragraph("Header:").NoMarginPadding().SetMarginTop(10));
                         break;
                 }
+
                 var table = new Table(columnWidths, true).SetFontSize(12);
                 document.Add(table);
                 table.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
                 foreach (var parameter in ps)
                 {
-                    if (parameter.Kind == SwaggerParameterKind.Body)
+                    if (parameter.Kind == OpenApiParameterKind.Body)
                     {
                         var schema = parameter.ActualSchema;
 
@@ -133,12 +150,14 @@ namespace SwaggerDocCreator
                         FillTable(parameter.Name, parameter, table, childs);
                     }
                 }
+
                 table.Complete();
             }
+
             RenderChildren(document, childs);
         }
 
-        private void RenderChildren(Document document, Dictionary<string, JsonSchema4> childs)
+        private void RenderChildren(Document document, Dictionary<string, JsonSchema> childs)
         {
             while (childs.Any())
             {
@@ -153,13 +172,14 @@ namespace SwaggerDocCreator
                 {
                     FillTable(field, property, table2, childs);
                 }
+
                 table2.Complete();
             }
         }
 
-        private void FillTable(string field, JsonSchema4 property, Table table, Dictionary<string, JsonSchema4> childs)
+        private void FillTable(string field, JsonSchema property, Table table, Dictionary<string, JsonSchema> childs)
         {
-            var isAllowNull = !((dynamic)property).IsRequired;
+            var isAllowNull = !((dynamic) property).IsRequired;
             var desc = property.Description ?? "";
             property = property.ActualTypeSchema;
             table.AddCell(field);
@@ -171,6 +191,7 @@ namespace SwaggerDocCreator
                     typeName = typeNameO?.ToString() ?? (field + "Object");
                 }
             }
+
             switch (property.Type)
             {
                 case JsonObjectType.Array:
@@ -197,9 +218,11 @@ namespace SwaggerDocCreator
                                 break;
                         }
                     }
+
                     //table.AddCell(property.Type.ToString());
                     break;
             }
+
             table.AddCell(typeName);
             table.AddCell(isAllowNull ? "是" : "否");
             table.AddCell(desc);

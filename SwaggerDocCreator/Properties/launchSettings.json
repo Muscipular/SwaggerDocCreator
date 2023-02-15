@@ -2,8 +2,7 @@
   "profiles": {
     "SwaggerDocCreator": {
       "commandName": "Project",
-      "commandLineArgs": "-i http://localhost:5820/swagger/v1/swagger.json -f 新宋体 -F %windir%/fonts/simsun.ttc -o D:/药店系统v1.pdf",
-      "workingDirectory": "bin\\Debug\\"
+      "commandLineArgs": "-i http://127.0.0.1:50973/swagger/v1/swagger.json -f 新宋体 -F C:\\Windows\\Fonts\\simsun.ttc -o D:/药店系统v1.pdf"
     },
     "Membership": {
       "commandName": "Project",
