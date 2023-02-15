@@ -73,7 +73,7 @@ class SwaggerProcessorDocx
                         RenderResponse(document, responses);
                     }
 
-                    document.InsertBreak(BreakType.PageBreak);
+                    document.InsertBreak(BreakType.LineBreak);
                 }
             }
 
