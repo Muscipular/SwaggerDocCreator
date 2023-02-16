@@ -4,233 +4,241 @@ using System.IO;
 using System.Linq;
 using System.Security.Policy;
 using System.Text.RegularExpressions;
-using iText.IO.Font;
-using iText.Kernel.Font;
-using iText.Kernel.Pdf;
 using iText.Kernel.Pdf.Canvas;
-using iText.Layout;
-using iText.Layout.Element;
-using iText.Layout.Properties;
 using NJsonSchema;
 using NSwag;
 
-namespace SwaggerDocCreator
+namespace SwaggerDocCreator;
+
+class SwaggerProcessor<TRender> where TRender : ISwaggerDocRender, new()
 {
-    class SwaggerProcessor
+    public void Process(string input, string fontPath, string fontFamily, string output, string[] argTags)
     {
-        float[] columnWidths = new[] {22f, 20, 12, 46};
-
-        public void Process(string input, string fontPath, string fontFamily, string output, string[] argTags)
+        OpenApiDocument swaggerDocument;
+        if (input.StartsWith("http"))
         {
-            OpenApiDocument swaggerDocument;
-            if (input.StartsWith("http"))
+            swaggerDocument = OpenApiDocument.FromUrlAsync(input).Result;
+        }
+        else
+        {
+            swaggerDocument = NSwag.OpenApiDocument.FromFileAsync(input).Result;
+        }
+
+        //var filename = Path.Combine(Path.GetPathRoot(input), Path.GetFileNameWithoutExtension(input) + ".pdf");
+        using ISwaggerDocRender document = new TRender();
+        document.Init(File.Open(output, FileMode.Create), fontPath, fontFamily);
+
+        document.RenderDocInfo(swaggerDocument.Info);
+
+        int indexTag = 0, indexOper = 0;
+        foreach (var (tag, pairs) in swaggerDocument.Paths.GroupBy(x =>
+                     x.Value.Values.FirstOrDefault()?.Tags.FirstOrDefault()))
+        {
+            if (argTags.Length > 0 && argTags.All(e => e != tag))
             {
-                swaggerDocument = OpenApiDocument.FromUrlAsync(input).Result;
-            }
-            else
-            {
-                swaggerDocument = NSwag.OpenApiDocument.FromFileAsync(input).Result;
+                continue;
             }
 
-            //var filename = Path.Combine(Path.GetPathRoot(input), Path.GetFileNameWithoutExtension(input) + ".pdf");
-            using (var pdfDocument =
-                   new iText.Kernel.Pdf.PdfDocument(new PdfWriter(File.Open(output, FileMode.Create))))
+            indexTag++;
+            indexOper = 0;
+            document.RenderGroup(indexTag, tag);
+            foreach (var (path, operations) in pairs)
             {
-                var document = new Document(pdfDocument);
-                PdfFontFactory.Register(fontPath); //"simsun.ttc"
-                //var array = PdfFontFactory.GetRegisteredFonts().Where(x => x.Contains("sum")).ToArray();
-                var msyh = PdfFontFactory.CreateRegisteredFont(fontFamily, PdfEncodings.IDENTITY_H); //新宋体
-                document.SetFont(msyh);
-                document.SetFontSize(14);
-                //                document.SetFont(PdfFontFactory.CreateRegisteredFont("helvetica"));
-                document.Add(new Paragraph(new Text(swaggerDocument.Info.Title).SetBold().SetFontSize(36)
-                    .SetTextAlignment(TextAlignment.CENTER)));
-                document.Add(new Paragraph(new Text("Version: " + swaggerDocument.Info.Version).SetBold()));
-                document.Add(new Paragraph(new Text(swaggerDocument.Info.Description ?? "")));
-
-                int indexTag = 0, indexOper = 0;
-                foreach (var (tag, pairs) in swaggerDocument.Paths.GroupBy(x =>
-                             x.Value.Values.FirstOrDefault().Tags.FirstOrDefault()))
+                foreach (var (method, operation) in operations)
                 {
-                    if (argTags.Length > 0 && argTags.All(e => e != tag))
+                    indexOper++;
+                    document.RenderMethod(indexTag, indexOper, path, method, operation);
+                    var parameters = operation.ActualParameters ?? Array.Empty<OpenApiParameter>();
+                    if (parameters.Any())
                     {
-                        continue;
+                        RenderParmeter(document, parameters);
                     }
 
-                    indexTag++;
-                    indexOper = 0;
-                    document.Add(new Div().SetHeight(16));
-                    document.Add(new Paragraph($"{indexTag}. {tag}").NoMarginPadding().SetMarginTop(10).SetFontSize(18)
-                        .SetBold());
-                    foreach (var (path, operations) in pairs)
+                    var responses = operation.ActualResponses
+                        .Where(x => x.Key == "200")
+                        .Select(x => x.Value)
+                        .FirstOrDefault();
+                    if (responses != null)
                     {
-                        foreach (var (method, operation) in operations)
-                        {
-                            indexOper++;
-                            document.Add(new Paragraph(new Text($"{indexTag}.{indexOper}. {operation.Summary}"))
-                                .NoMarginPadding().SetBold());
-                            document.Add(new Paragraph(new Text("Method: " + method)).NoMarginPadding()
-                                .SetFontSize(12));
-                            document.Add(new Paragraph(new Text("Url: " + path)).NoMarginPadding().SetFontSize(12));
-
-                            var parameters = operation.ActualParameters ?? Array.Empty<OpenApiParameter>();
-                            if (parameters.Any())
-                            {
-                                RenderParmeter(document, parameters);
-                            }
-
-                            var responses = operation.ActualResponses.Where(x => x.Key == "200").Select(x => x.Value)
-                                .FirstOrDefault();
-                            if (responses != null)
-                            {
-                                RenderResponse(document, responses);
-                            }
-
-                            document.Add(new AreaBreak());
-                        }
+                        RenderResponse(document, responses);
                     }
+
+                    document.LineBreak();
                 }
             }
         }
 
-        private void RenderResponse(Document document, OpenApiResponse response)
+        document.Save();
+    }
+
+    private void RenderResponse(ISwaggerDocRender document, OpenApiResponse response)
+    {
+        if (response.ActualResponse.Schema == null || response.ActualResponse.Schema.ActualProperties.Count == 0)
         {
-            if (response.Schema == null)
+            return;
+        }
+
+        var childs = new Dictionary<string, JsonSchema>();
+        document.RenderParameterGroup("返回值");
+        var table = document.StartTable();
+        table.AddHeader("字段").AddHeader("类型").AddHeader("是否可空").AddHeader("说明").EndHeader();
+        foreach (var (field, prop) in response.ActualResponse.Schema.ActualProperties)
+        {
+            FillTable(field, prop, table, childs);
+        }
+
+        table.Complete();
+        RenderChildren(document, childs);
+    }
+
+    private void RenderParmeter(ISwaggerDocRender document, IEnumerable<OpenApiParameter> parameters)
+    {
+        var childs = new Dictionary<string, JsonSchema>();
+
+        foreach (var ps in parameters.GroupBy(x => x.Kind).OrderBy(x => x.Key != OpenApiParameterKind.Header))
+        {
+            switch (ps.Key)
             {
-                return;
+                case OpenApiParameterKind.Undefined:
+                    continue;
+                case OpenApiParameterKind.Body:
+                case OpenApiParameterKind.Query:
+                case OpenApiParameterKind.Path:
+                case OpenApiParameterKind.FormData:
+                case OpenApiParameterKind.ModelBinding:
+                    document.RenderParameterGroup($"{ps.Key:G}参数:");
+                    break;
+                case OpenApiParameterKind.Header:
+                    document.RenderParameterGroup("Header:");
+                    break;
             }
-            var childs = new Dictionary<string, JsonSchema>();
-            document.Add(new Paragraph("返回值").NoMarginPadding().SetMarginTop(10));
-            var table = new Table(columnWidths, true).SetFontSize(12);
-            document.Add(table);
-            table.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
-            foreach (var (field, prop) in response.ActualResponse.Schema.ActualProperties)
+
+            var table = document.StartTable();
+            table.AddHeader("字段").AddHeader("类型").AddHeader("是否可空").AddHeader("说明").EndHeader();
+            foreach (var parameter in ps)
             {
-                FillTable(field, prop, table, childs);
+                if (parameter.Kind == OpenApiParameterKind.Body)
+                {
+                    var schema = parameter.ActualSchema;
+
+                    foreach (var (field, property) in schema.ActualProperties)
+                    {
+                        FillTable(field, property, table, childs);
+                    }
+                }
+                else
+                {
+                    FillTable(parameter.Name, parameter, table, childs);
+                }
             }
 
             table.Complete();
-            RenderChildren(document, childs);
         }
 
-        private void RenderParmeter(Document document, IEnumerable<OpenApiParameter> parameters)
+        RenderChildren(document, childs);
+    }
+
+    private void RenderChildren(ISwaggerDocRender document, Dictionary<string, JsonSchema> childs)
+    {
+        while (childs.Any())
         {
-            var childs = new Dictionary<string, JsonSchema>();
-
-            foreach (var ps in parameters.GroupBy(x => x.Kind).OrderBy(x => x.Key != OpenApiParameterKind.Header))
+            var key = childs.Keys.FirstOrDefault();
+            var jsonSchema4 = childs[key];
+            childs.Remove(key);
+            if (jsonSchema4.ActualProperties.Count == 0)
             {
-                switch (ps.Key)
-                {
-                    case OpenApiParameterKind.Undefined:
-                        continue;
-                    case OpenApiParameterKind.Body:
-                    case OpenApiParameterKind.Query:
-                    case OpenApiParameterKind.Path:
-                    case OpenApiParameterKind.FormData:
-                    case OpenApiParameterKind.ModelBinding:
-                        document.Add(new Paragraph($"{ps.Key:G}参数:").NoMarginPadding().SetMarginTop(10));
-                        break;
-                    case OpenApiParameterKind.Header:
-                        document.Add(new Paragraph("Header:").NoMarginPadding().SetMarginTop(10));
-                        break;
-                }
-
-                var table = new Table(columnWidths, true).SetFontSize(12);
-                document.Add(table);
-                table.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
-                foreach (var parameter in ps)
-                {
-                    if (parameter.Kind == OpenApiParameterKind.Body)
-                    {
-                        var schema = parameter.ActualSchema;
-
-                        foreach (var (field, property) in schema.ActualProperties)
-                        {
-                            FillTable(field, property, table, childs);
-                        }
-                    }
-                    else
-                    {
-                        FillTable(parameter.Name, parameter, table, childs);
-                    }
-                }
-
-                table.Complete();
+                continue;
             }
 
-            RenderChildren(document, childs);
-        }
+            document.RenderSubTypeName(key);
+            var table2 = document.StartTable();
+            table2.AddHeader("字段").AddHeader("类型").AddHeader("是否可空").AddHeader("说明").EndHeader();
+            foreach (var (field, property) in jsonSchema4.ActualProperties)
+            {
+                FillTable(field, property, table2, childs);
+            }
 
-        private void RenderChildren(Document document, Dictionary<string, JsonSchema> childs)
+            table2.Complete();
+        }
+    }
+
+    private string ResolveTypeName(JsonSchema property)
+    {
+        var schema = property.ActualTypeSchema;
+        switch (schema.Type)
         {
-            while (childs.Any())
-            {
-                var key = childs.Keys.FirstOrDefault();
-                var jsonSchema4 = childs[key];
-                childs.Remove(key);
-                document.Add(new Paragraph(key));
-                var table2 = new Table(columnWidths, true).SetFontSize(12);
-                document.Add(table2);
-                table2.AddHeaderCell("字段").AddHeaderCell("类型").AddHeaderCell("是否可空").AddHeaderCell("说明");
-                foreach (var (field, property) in jsonSchema4.ActualProperties)
+            case JsonObjectType.Array:
+                return ResolveTypeName(schema.Item) + "[]";
+            case JsonObjectType.Boolean:
+                return "Bool";
+            case JsonObjectType.Integer:
+                return "Int";
+            case JsonObjectType.Number:
+                return "Double";
+            case JsonObjectType.Object:
+                if (schema.ExtensionData?.TryGetValue("typeInfo", out var typeName) == true)
                 {
-                    FillTable(field, property, table2, childs);
+                    return typeName?.ToString();
                 }
 
-                table2.Complete();
-            }
+                return "Object";
+            case JsonObjectType.String:
+                return property.Format switch
+                {
+                    "date-time" => "DateTime",
+                    "date" => "Date",
+                    _ => "String"
+                };
+            case JsonObjectType.File:
+            case JsonObjectType.Null:
+            case JsonObjectType.None:
+            default:
+                return "Unsupported";
         }
+    }
 
-        private void FillTable(string field, JsonSchema property, Table table, Dictionary<string, JsonSchema> childs)
+    private void FillTable(string field, JsonSchema property, ISwaggerTableRender table,
+        Dictionary<string, JsonSchema> childs)
+    {
+        var isAllowNull = !((dynamic) property).IsRequired;
+        var desc = property.Description ?? "";
+        property = property.ActualTypeSchema;
+        table.AddCell(field);
+        string typeName = ResolveTypeName(property);
+        switch (property.Type)
         {
-            var isAllowNull = !((dynamic) property).IsRequired;
-            var desc = property.Description ?? "";
-            property = property.ActualTypeSchema;
-            table.AddCell(field);
-            string typeName = field;
-            if (property.ExtensionData != null)
-            {
-                if (property.ExtensionData.TryGetValue("typeInfo", out var typeNameO))
+            case JsonObjectType.Array:
+                typeName = Regex.Replace(typeName, @"^List\[(.+)\]$", "$1[]");
+                childs.Add(typeName.Replace("[]", ""), property.Item.ActualTypeSchema);
+                break;
+            case JsonObjectType.Object:
+                //table.AddCell(typeName);
+                childs.Add(typeName, property.ActualTypeSchema);
+                break;
+            case JsonObjectType.None:
+                break;
+            default:
+                typeName = property.Type.ToString();
+                if (property.Type == JsonObjectType.String)
                 {
-                    typeName = typeNameO?.ToString() ?? (field + "Object");
-                }
-            }
-
-            switch (property.Type)
-            {
-                case JsonObjectType.Array:
-                    typeName = Regex.Replace(typeName, @"^List\[(.+)\]$", "$1[]");
-                    childs.Add(typeName.Replace("[]", ""), property.Item.ActualTypeSchema);
-                    break;
-                case JsonObjectType.Object:
-                    //table.AddCell(typeName);
-                    childs.Add(typeName, property.ActualTypeSchema);
-                    break;
-                case JsonObjectType.None:
-                    break;
-                default:
-                    typeName = property.Type.ToString();
-                    if (property.Type == JsonObjectType.String)
+                    switch (property.Format)
                     {
-                        switch (property.Format)
-                        {
-                            case "date-time":
-                                typeName = "DateTime";
-                                break;
-                            case "date":
-                                typeName = "Date";
-                                break;
-                        }
+                        case "date-time":
+                            typeName = "DateTime";
+                            break;
+                        case "date":
+                            typeName = "Date";
+                            break;
                     }
+                }
 
-                    //table.AddCell(property.Type.ToString());
-                    break;
-            }
-
-            table.AddCell(typeName);
-            table.AddCell(isAllowNull ? "是" : "否");
-            table.AddCell(desc);
-            table.Flush();
+                //table.AddCell(property.Type.ToString());
+                break;
         }
+
+        table.AddCell(typeName);
+        table.AddCell(isAllowNull ? "是" : "否");
+        table.AddCell(desc);
+        table.EndRow();
     }
 }

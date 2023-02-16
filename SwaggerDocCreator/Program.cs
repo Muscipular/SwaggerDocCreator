@@ -14,17 +14,17 @@ namespace SwaggerDocCreator
                     {
                         if (x.Type.ToLower() == "pdf")
                         {
-                            new SwaggerProcessor().Process(x.Input, x.FontPath, x.FontFamily, x.Output, x.Tags.ToArray());
+                            new SwaggerProcessor<PdfSwaggerDocRender>().Process(x.Input, x.FontPath, x.FontFamily, x.Output, x.Tags.ToArray());
                         }
 
                         if (x.Type.ToLower() == "md")
                         {
-                            new SwaggerProcessorMd().Process(x.Input, x.FontPath, x.FontFamily, x.Output, x.Tags.ToArray());
+                            new SwaggerProcessor<MarkdownSwaggerDocRender>().Process(x.Input, x.FontPath, x.FontFamily, x.Output, x.Tags.ToArray());
                         }
 
                         if (x.Type.ToLower() == "docx")
                         {
-                            new SwaggerProcessorDocx().Process(x.Input, x.FontPath, x.FontFamily, x.Output, x.Tags.ToArray());
+                            new SwaggerProcessor<DocxSwaggerDocRender>().Process(x.Input, x.FontPath, x.FontFamily, x.Output, x.Tags.ToArray());
                         }
 
                         return 0;
