@@ -73,7 +73,8 @@ class SwaggerProcessor<TRender> where TRender : ISwaggerDocRender, new()
 
     private void RenderResponse(ISwaggerDocRender document, OpenApiResponse response)
     {
-        if (response.ActualResponse.Schema == null || response.ActualResponse.Schema.ActualProperties.Count == 0)
+        var actualSchema = response.ActualResponse?.Schema?.ActualSchema;
+        if (actualSchema == null || actualSchema?.ActualProperties.Count == 0)
         {
             return;
         }
@@ -82,7 +83,7 @@ class SwaggerProcessor<TRender> where TRender : ISwaggerDocRender, new()
         document.RenderParameterGroup("返回值");
         var table = document.StartTable();
         table.AddHeader("字段").AddHeader("类型").AddHeader("是否可空").AddHeader("说明").EndHeader();
-        foreach (var (field, prop) in response.ActualResponse.Schema.ActualProperties)
+        foreach (var (field, prop) in actualSchema.ActualProperties)
         {
             FillTable(field, prop, table, childs);
         }
