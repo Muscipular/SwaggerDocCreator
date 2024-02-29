@@ -2,6 +2,7 @@
 using System.IO;
 using Aspose.Words;
 using Aspose.Words.Fonts;
+using AsposeX;
 using NSwag;
 
 namespace SwaggerDocCreator;
@@ -10,7 +11,7 @@ class DocxSwaggerDocRender : ISwaggerDocRender
 {
     static DocxSwaggerDocRender()
     {
-        Nd.Update();
+        Setup.Do();
     }
     
     private Aspose.Words.Document doc;

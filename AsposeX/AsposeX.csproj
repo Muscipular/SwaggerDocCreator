@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>disable</Nullable>
+        <TargetFrameworks>net7.0;net8.0</TargetFrameworks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Aspose.Cells" Version="24.2.0" />
+        <PackageReference Include="Aspose.HTML" Version="24.2.0" />
+        <PackageReference Include="Aspose.PDF" Version="24.2.0" />
+        <PackageReference Include="Aspose.Words" Version="24.2.0" />
+        <PackageReference Include="Lib.Harmony" Version="2.3.0" />
+<!--        <PackageReference Condition="'$(TargetFramework)' == 'net8.0'" Include="Lib.Harmony" Version="2.3.0" />-->
+    </ItemGroup>
+</Project>

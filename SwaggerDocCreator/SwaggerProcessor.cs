@@ -210,11 +210,13 @@ class SwaggerProcessor<TRender> where TRender : ISwaggerDocRender, new()
         {
             case JsonObjectType.Array:
                 typeName = Regex.Replace(typeName, @"^List\[(.+)\]$", "$1[]");
-                childs.Add(typeName.Replace("[]", ""), property.Item.ActualTypeSchema);
+                if (!childs.ContainsKey(typeName.Replace("[]", "")))
+                    childs.Add(typeName.Replace("[]", ""), property.Item.ActualTypeSchema);
                 break;
             case JsonObjectType.Object:
                 //table.AddCell(typeName);
-                childs.Add(typeName, property.ActualTypeSchema);
+                if (!childs.ContainsKey(typeName))
+                    childs.Add(typeName, property.ActualTypeSchema);
                 break;
             case JsonObjectType.None:
                 break;
