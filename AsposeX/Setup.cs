@@ -9,19 +9,19 @@ namespace AsposeX;
 public static class Setup
 {
     private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-    private static Harmony harmony;
-    private static readonly object locker = new object();
+    private static Harmony _harmony;
+    private static readonly object Locker = new();
 
     public static void Do()
     {
-        lock (locker)
+        lock (Locker)
         {
-            if (harmony != null)
+            if (_harmony != null)
             {
                 return;
             }
 
-            string Key =
+            string key =
                 "PExpY2Vuc2U+DQogIDxEYXRhPg0KICAgIDxMaWNlbnNlZFRvPkFzcG9zZSBTY290bGFuZCB" +
                 "UZWFtPC9MaWNlbnNlZFRvPg0KICAgIDxFbWFpbFRvPmJpbGx5Lmx1bmRpZUBhc3Bvc2UuY2" +
                 "9tPC9FbWFpbFRvPg0KICAgIDxMaWNlbnNlVHlwZT5EZXZlbG9wZXIgT0VNPC9MaWNlbnNlV" +
@@ -41,17 +41,19 @@ public static class Setup
                 "aW5RYnFGZkt2L3J1dHR2Y3hvUk9rYzF0VWUwRHRPNmNQMVpmNkowVmVtZ1NZOGkvTFpFQ1R" +
                 "Hc3pScUpWUVJaME1vVm5CaHVQQUprNWVsaTdmaFZjRjhoV2QzRTRYUTNMemZtSkN1YWoyTk" +
                 "V0ZVJpNUhyZmc9PC9TaWduYXR1cmU+DQo8L0xpY2Vuc2U+";
-            Stream LStream = new MemoryStream(Convert.FromBase64String(Key));
-            harmony = new Harmony("AsposeX");
+            Stream lStream = new MemoryStream(Convert.FromBase64String(key));
+            _harmony = new Harmony("AsposeX");
 
             PathWord();
             PathCells();
             PathPdf();
             PathHtml();
-            SetLicense(new Aspose.Cells.License().SetLicense, LStream);
-            SetLicense(new Aspose.Words.License().SetLicense, LStream);
-            SetLicense(new Aspose.Pdf.License().SetLicense, LStream);
-            SetLicense(new Aspose.Html.License().SetLicense, LStream);
+            PathBarCode();
+            SetLicense(new Aspose.Cells.License().SetLicense, lStream);
+            SetLicense(new Aspose.Words.License().SetLicense, lStream);
+            SetLicense(new Aspose.Pdf.License().SetLicense, lStream);
+            SetLicense(new Aspose.Html.License().SetLicense, lStream);
+            SetLicense(new Aspose.BarCode.License().SetLicense, lStream);
 
             // harmony.UnpatchAll();
         }
@@ -59,24 +61,14 @@ public static class Setup
 
     private static void PathHtml()
     {
-        /*  uint num = this.\u0003\u2002;
-label_1:
-    try
-    {
-      while (!this.\u000E\u2003)
-      {
-        if (this.\u0008\u2001.HasValue)
-        {
-          this.\u0006\u2000 = this.\u0008\u2001.Value;
-          this.\u0002((long) this.\u0006\u2000);
-          this.\u0008\u2001 = new uint?();
-        }
-        else if (this.\u0006\u2000 >= num)
-          break;
-        this.\u0003();
-      }*/
         TransCode<Aspose.Html.License, HtmlHook>.Do("\u0003\u2008", "\u0006\u2000", "\u0003",
             "\u0003\u2002", "\u0008\u2001", "\u0006\u2000", "\u0008\u2004");
+        // PatchMethodCall();
+    }
+    private static void PathBarCode()
+    {
+        TransCode<Aspose.BarCode.License, BarCodeHook>.Do("\u0005\u0018", "\u0008\u0002", "\u0006\u0002",
+            "\u0008", "\u0005\u0010", "\u0006", "\u0002\u0005");
         // PatchMethodCall();
     }
 
@@ -96,15 +88,26 @@ label_1:
             }
         }
     }
+    public class BarCodeHook : IHook
+    {
+        public void Hook(object instance, FieldInfo totalLength, FieldInfo gotoPos, FieldInfo curPos, FieldInfo ret)
+        {
+            if ((uint)totalLength.GetValue(instance) == 0x3C56 && (uint)curPos.GetValue(instance) == 0x38A2)
+            {
+                var value = ret.GetValue(instance);
+                value.GetType().GetField("\u0002", Flags).SetValue(value, 0);
+            }
+        }
+    }
 
     public static class TransCode<T, THook> where THook : IHook, new()
     {
-        private static MethodInfo RunMethod;
-        private static FieldInfo totalLength, gotoPos, curPos, ret;
-        private static FastInvokeHandler oCall;
+        private static MethodInfo _runMethod;
+        private static FieldInfo _totalLength, _gotoPos, _curPos, _ret;
+        private static FastInvokeHandler _oCall;
 
-        public static void Do(string className, string warpMethod, string runMethod, string total, string s_goto,
-            string s_cur, string s_ret)
+        public static void Do(string className, string warpMethod, string runMethod, string total, string sGoto,
+            string sCur, string sRet)
         {
             var coreType = GetTypeIn(typeof(T).Assembly, className);
             //\u0003(global::\u000F\u2001
@@ -116,13 +119,13 @@ label_1:
                 .FirstOrDefault(e =>
                     e.Name == runMethod && e.GetParameters().Length == 0 && e.ReturnType == typeof(void));
             var d = Transpiler;
-            oCall = HarmonyLib.MethodInvoker.GetHandler(method2);
-            totalLength = AccessTools.Field(coreType, total);
-            gotoPos = AccessTools.Field(coreType, s_goto);
-            curPos = AccessTools.Field(coreType, s_cur);
-            ret = AccessTools.Field(coreType, s_ret);
-            RunMethod = method2;
-            harmony.Patch(method, transpiler: new HarmonyMethod(d.Method));
+            _oCall = HarmonyLib.MethodInvoker.GetHandler(method2);
+            _totalLength = AccessTools.Field(coreType, total);
+            _gotoPos = AccessTools.Field(coreType, sGoto);
+            _curPos = AccessTools.Field(coreType, sCur);
+            _ret = AccessTools.Field(coreType, sRet);
+            _runMethod = method2;
+            _harmony.Patch(method, transpiler: new HarmonyMethod(d.Method));
         }
 
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -132,7 +135,7 @@ label_1:
             bool found = false;
             for (var i = 0; i < codeInstructions.Count; i++)
             {
-                if (codeInstructions[i].opcode == OpCodes.Call && codeInstructions[i].operand == RunMethod)
+                if (codeInstructions[i].opcode == OpCodes.Call && codeInstructions[i].operand == _runMethod)
                 {
                     var fn = Patcher;
                     codeInstructions[i] = new CodeInstruction(OpCodes.Call, fn.Method);
@@ -142,7 +145,7 @@ label_1:
 
             if (!found)
             {
-                var sb = new StringBuilder().Append("not found method ").Append(SName(RunMethod.FullDescription()))
+                var sb = new StringBuilder().Append("not found method ").Append(SName(_runMethod.FullDescription()))
                     .AppendLine();
                 foreach (var instruction in instructions)
                 {
@@ -157,10 +160,10 @@ label_1:
         }
 
 
-        public static void Patcher(object __instance)
+        public static void Patcher(object instance)
         {
-            oCall(__instance);
-            new THook().Hook(__instance, totalLength, gotoPos, curPos, ret);
+            _oCall(instance);
+            new THook().Hook(instance, _totalLength, _gotoPos, _curPos, _ret);
             //*/
         }
     }
@@ -185,11 +188,14 @@ label_1:
 
             var o = ret.GetValue(instance);
             var res = SObj(o);
+            if ((uint)totalLength.GetValue(instance) != 0x015C)
+            {
 
-            Console.WriteLine(
-                $"{(gotoPos.GetValue(instance) != null ? " >>> " : " <<< ")} RW: 0x{curPos.GetValue(instance):X4} => 0x{gotoPos.GetValue(instance) ?? 0:X4} 0x{totalLength.GetValue(instance):X4} RES: {res}");
-            Console.WriteLine();
-            Console.WriteLine();
+                Console.WriteLine(
+                    $"{(gotoPos.GetValue(instance) != null ? " >>> " : " <<< ")} RW: 0x{curPos.GetValue(instance):X4} => 0x{gotoPos.GetValue(instance) ?? 0:X4} 0x{totalLength.GetValue(instance):X4} RES: {res}");
+                Console.WriteLine();
+                Console.WriteLine();
+            }
         }
     }
 
@@ -263,7 +269,7 @@ label_1:
         var method = MethodBase.GetCurrentMethod();
         Func<object, object[], object> a = method.Invoke;
         var k = MethodCall;
-        harmony.Patch(a.Method, postfix: new HarmonyMethod(k.Method));
+        _harmony.Patch(a.Method, postfix: new HarmonyMethod(k.Method));
     }
 
     private static void PathCells()
@@ -291,18 +297,18 @@ label_1:
         }
     }
 
-    private static void MethodCall(MethodBase __instance, object[] __args, object __result)
+    private static void MethodCall(MethodBase instance, object[] args, object result)
     {
-        Console.WriteLine($"Method Call : {SName(__instance.FullDescription())}");
-        Console.WriteLine("this: " + __args[0]);
-        var arg = __args[1] as object[];
+        Console.WriteLine($"Method Call : {SName(instance.FullDescription())}");
+        Console.WriteLine("this: " + args[0]);
+        var arg = args[1] as object[];
         for (var index = 0; index < arg.Length; index++)
         {
             var o = arg[index];
             Console.WriteLine("arg" + index + ": " + o);
         }
 
-        Console.WriteLine("result: " + SName(__result?.GetType().FullName) + " " + __result);
+        Console.WriteLine("result: " + SName(result?.GetType().FullName) + " " + result);
         // PrintStack();
 
         Console.WriteLine();
