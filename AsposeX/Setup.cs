@@ -280,35 +280,47 @@ public static class Setup
             "\u000F",
             "\u0008", "\u0008\u000F", "\u0005",
             "\u000E\u0005");
+        // PatchMethodCall();
     }
 
     public class CellHook : IHook
     {
         public void Hook(object instance, FieldInfo totalLength, FieldInfo gotoPos, FieldInfo curPos, FieldInfo ret)
         {
+            // new DebugHook().Hook(instance, totalLength, gotoPos, curPos, ret);
             var o = ret.GetValue(instance);
-            if ((uint?)totalLength.GetValue(instance) == 0x04EF)
+            var totalLenValue = (uint?)totalLength.GetValue(instance);
+            if (totalLenValue == 0x04EF)
             {
                 if ((uint?)curPos.GetValue(instance) == 0x03D2)
                 {
                     o.GetType().GetField("\u0002", Flags).SetValue(o, "20110101".ToCharArray());
                 }
             }
+
+            if (totalLenValue == 0xE5)
+            {
+                if ((uint?)curPos.GetValue(instance) == 0xD9)
+                {
+                    o.GetType().GetField("\u0002", Flags).SetValue(o, 0);
+                }
+            }
         }
     }
 
-    private static void MethodCall(MethodBase instance, object[] args, object result)
+    // ReSharper disable InconsistentNaming
+    private static void MethodCall(MethodBase __instance, object[] __args, object __result)
     {
-        Console.WriteLine($"Method Call : {SName(instance.FullDescription())}");
-        Console.WriteLine("this: " + args[0]);
-        var arg = args[1] as object[];
+        Console.WriteLine($"Method Call : {SName(__instance.FullDescription())}");
+        Console.WriteLine("this: " + __args[0]);
+        var arg = __args[1] as object[];
         for (var index = 0; index < arg.Length; index++)
         {
             var o = arg[index];
             Console.WriteLine("arg" + index + ": " + o);
         }
 
-        Console.WriteLine("result: " + SName(result?.GetType().FullName) + " " + result);
+        Console.WriteLine("result: " + SName(__result?.GetType().FullName) + " " + __result);
         // PrintStack();
 
         Console.WriteLine();
@@ -362,12 +374,13 @@ public static class Setup
         {
             var type = o.GetType();
             var sName = SName(type.FullName);
+            const int length = 80;
             foreach (var f in type.GetFields(Flags))
             {
                 var a = XToString(f.GetValue(o));
-                if (a != null && a.Length > 20)
+                if (a != null && a.Length > length)
                 {
-                    a = a.Substring(0, 20);
+                    a = a.Substring(0, length);
                 }
 
                 sName += $", {SName(f.Name)} : {a?.ToString()?.Replace("\n", "").Replace("\r", "")}";
@@ -376,9 +389,9 @@ public static class Setup
             foreach (var f in type.BaseType.GetFields(Flags))
             {
                 var a = XToString(f.GetValue(o));
-                if (a != null && a.Length > 20)
+                if (a != null && a.Length > length)
                 {
-                    a = a.Substring(0, 20);
+                    a = a.Substring(0, length);
                 }
 
                 sName += $", B{SName(f.Name)} : {a?.ToString()?.Replace("\n", "").Replace("\r", "")}";
